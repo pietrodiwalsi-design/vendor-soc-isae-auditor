@@ -4,6 +4,11 @@ class CUECTracker:
     """Tracks Complementary User Entity Controls (CUECs) and assigns internal accountability."""
 
     def analyze_cuec_gaps(self, extracted_cuecs: List[str], implemented_internal_controls: List[str]) -> Dict[str, Any]:
+        extracted_cuecs = extracted_cuecs or []
+        implemented_internal_controls = implemented_internal_controls or []
+        if not isinstance(extracted_cuecs, list) or not isinstance(implemented_internal_controls, list):
+            raise TypeError("extracted_cuecs and implemented_internal_controls must be lists")
+
         cuec_items = []
         unassigned_count = 0
 

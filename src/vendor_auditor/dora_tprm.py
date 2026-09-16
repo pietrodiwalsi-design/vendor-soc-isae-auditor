@@ -4,8 +4,13 @@ class DORATPRMEvaluator:
     """Tier 3 Evaluator for DORA Article 28 (Third-Party ICT Risk)."""
 
     def evaluate_vendor_risk(self, airlock_data: Dict[str, Any]) -> Dict[str, Any]:
+        airlock_data = airlock_data or {}
+        if not isinstance(airlock_data, dict):
+            raise TypeError("airlock_data must be a dict")
         opinion = airlock_data.get("section_1_opinion")
-        exceptions = airlock_data.get("section_4_exceptions_count", 0)
+        exceptions = airlock_data.get("section_4_exceptions_count", 0) or 0
+        if not isinstance(exceptions, (int, float)) or isinstance(exceptions, bool):
+            exceptions = 0
         is_carveout = (airlock_data.get("subservice_method") == "CARVE_OUT")
 
         # Risk scoring

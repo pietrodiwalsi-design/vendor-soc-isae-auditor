@@ -69,35 +69,49 @@ def handle_request(req):
             "result": {"tools": TOOLS}
         }
     elif method == "tools/call":
+        if not isinstance(params, dict):
+            return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": "Invalid params: expected object"}}
         tool_name = params.get("name")
-        args = params.get("arguments", {})
+        args = params.get("arguments", {}) or {}
+        if not isinstance(args, dict):
+            return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": "Invalid params: 'arguments' must be an object"}}
 
-        if tool_name == "audit_soc_report_text":
-            anon = AnonymizerProxy()
-            clean_text, _ = anon.redact_sensitive_data(args.get("report_text", ""))
-            airlock = AirlockParser()
-            sections = airlock.extract_critical_sections(clean_text)
-            evaluator = DORATPRMEvaluator()
-            dora = evaluator.evaluate_vendor_risk(sections)
-            out = {
-                "airlock_sections": sections,
-                "dora_evaluation": dora
-            }
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {"content": [{"type": "text", "text": json.dumps(out, indent=2)}], "isError": False}
-            }
-        elif tool_name == "analyze_cuec_controls":
-            tracker = CUECTracker()
-            res = tracker.analyze_cuec_gaps(args.get("cuecs", []), args.get("internal_controls", []))
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {"content": [{"type": "text", "text": json.dumps(res, indent=2)}], "isError": False}
-            }
-        else:
-            return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": f"Unknown tool: {tool_name}"}}
+        try:
+            if tool_name == "audit_soc_report_text":
+                report_text = args.get("report_text", "")
+                if not isinstance(report_text, str):
+                    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": "Invalid params: 'report_text' must be a string"}}
+                anon = AnonymizerProxy()
+                clean_text, _ = anon.redact_sensitive_data(report_text)
+                airlock = AirlockParser()
+                sections = airlock.extract_critical_sections(clean_text)
+                evaluator = DORATPRMEvaluator()
+                dora = evaluator.evaluate_vendor_risk(sections)
+                out = {
+                    "airlock_sections": sections,
+                    "dora_evaluation": dora
+                }
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {"content": [{"type": "text", "text": json.dumps(out, indent=2)}], "isError": False}
+                }
+            elif tool_name == "analyze_cuec_controls":
+                cuecs = args.get("cuecs", [])
+                internal_controls = args.get("internal_controls", [])
+                if not isinstance(cuecs, list) or not isinstance(internal_controls, list):
+                    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": "Invalid params: 'cuecs' and 'internal_controls' must be arrays"}}
+                tracker = CUECTracker()
+                res = tracker.analyze_cuec_gaps(cuecs, internal_controls)
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {"content": [{"type": "text", "text": json.dumps(res, indent=2)}], "isError": False}
+                }
+            else:
+                return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": f"Unknown tool: {tool_name}"}}
+        except Exception as e:
+            return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32603, "message": f"Internal error executing tool '{tool_name}': {str(e)}"}}
     else:
         return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Method not found: {method}"}}
 
@@ -106,14 +120,26 @@ def main():
         line = line.strip()
         if not line:
             continue
+        req_id = None
         try:
             req = json.loads(line)
+            if isinstance(req, dict):
+                req_id = req.get("id")
+            if not isinstance(req, dict) or req.get("jsonrpc") != "2.0" or "method" not in req:
+                err = {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32600, "message": "Invalid Request: not a valid JSON-RPC 2.0 request object"}}
+                sys.stdout.write(json.dumps(err) + "\n")
+                sys.stdout.flush()
+                continue
             resp = handle_request(req)
             if resp is not None:
                 sys.stdout.write(json.dumps(resp) + "\n")
                 sys.stdout.flush()
+        except json.JSONDecodeError as e:
+            err = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": f"Parse error: {str(e)}"}}
+            sys.stdout.write(json.dumps(err) + "\n")
+            sys.stdout.flush()
         except Exception as e:
-            err = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": str(e)}}
+            err = {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32603, "message": f"Internal error: {str(e)}"}}
             sys.stdout.write(json.dumps(err) + "\n")
             sys.stdout.flush()
 
