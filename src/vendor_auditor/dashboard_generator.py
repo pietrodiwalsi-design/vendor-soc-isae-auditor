@@ -3,6 +3,16 @@ class VendorDashboardGenerator:
 
     def generate_html_dashboard(self, vendor_name: str, airlock_res: dict, dora_res: dict, cuec_res: dict) -> str:
         dora = dora_res.get("dora_article_28_compliance", {})
+        # FIX (2026-09-18 review, dashboard hardening): residual_tpm_risk_score
+        # is None when the auditor opinion could not be extracted
+        # (risk_tier="INSUFFICIENT_EXTRACTION", see FIX 2). Comparing None >= 5
+        # crashed the dashboard render. Render an explicit "N/A" state instead
+        # of coercing to 0 (which would look like a clean/low-risk result).
+        raw_score = dora.get('residual_tpm_risk_score')
+        score_display = f"{raw_score} / 10" if raw_score is not None else "N/A"
+        score_color = '#94a3b8' if raw_score is None else ('#ef4444' if raw_score >= 5 else '#10b981')
+        action_text = dora.get('action_required', 'N/A') or 'N/A'
+        action_display = action_text[:60] + ('...' if len(action_text) > 60 else '')
         html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -31,7 +41,7 @@ class VendorDashboardGenerator:
   <div class="grid">
     <div class="metric-card" style="border-left-color: #38bdf8;">
       <div class="metric-lbl">TPRM Residual Risk</div>
-      <div class="metric-val" style="color: {'#ef4444' if dora.get('residual_tpm_risk_score',0) >= 5 else '#10b981'};">{dora.get('residual_tpm_risk_score', 0)} / 10</div>
+      <div class="metric-val" style="color: {score_color};">{score_display}</div>
       <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Tier: {dora.get('risk_tier', 'N/A')}</div>
     </div>
     <div class="metric-card" style="border-left-color: #f59e0b;">
@@ -46,7 +56,7 @@ class VendorDashboardGenerator:
     </div>
     <div class="metric-card" style="border-left-color: #a855f7;">
       <div class="metric-lbl">DORA Art. 28 Status</div>
-      <div class="metric-val" style="color: #a855f7; font-size: 16px; margin-top: 10px;">{dora.get('action_required', 'N/A')[:22]}...</div>
+      <div class="metric-val" style="color: #a855f7; font-size: 14px; margin-top: 10px;">{action_display}</div>
     </div>
   </div>
 </body>

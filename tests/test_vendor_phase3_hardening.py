@@ -46,8 +46,13 @@ class TestMCPServerHardening(unittest.TestCase):
 
 class TestAirlockParserHardening(unittest.TestCase):
     def test_none_raw_text_does_not_crash(self):
+        # NOTE (2026-09-18 review, FIX 2): was "UNCONFIRMED", renamed to the
+        # explicit "INSUFFICIENT_EXTRACTION" state so downstream scoring
+        # cannot silently treat an unclassifiable opinion as a low-risk
+        # baseline (fail-open bug from the review).
         res = AirlockParser().extract_critical_sections(None)
-        self.assertEqual(res["section_1_opinion"], "UNCONFIRMED")
+        self.assertEqual(res["section_1_opinion"], "INSUFFICIENT_EXTRACTION")
+        self.assertTrue(res["extraction_diagnostics"]["low_confidence_extraction"])
 
     def test_rejects_non_string(self):
         with self.assertRaises(TypeError):
